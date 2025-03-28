@@ -5,9 +5,22 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Response;
+use Carbon\Carbon;
 
 class SaleController extends Controller
 {
+    public function index()
+    {
+        $sales = Sale::with('product')->get();
+        return view('sales.index', compact('sales'));
+    }
+
+    public function show(Sale $sale)
+    {
+        return view('sales.show', compact('sale'));
+    }
+
     public function create()
     {
         $products = Product::where('user_id', auth()->id())->get();
@@ -38,4 +51,30 @@ class SaleController extends Controller
         return redirect()->route('products.index')->with('success', 'Sale recorded.');
     }
     // Add sales view methods here
+
+    public function downloadMonthlySales(Request $request)
+    {
+        $request->validate([
+            'month' => 'required|date_format:Y-m',
+        ]);
+
+        $month = Carbon::parse($request->month);
+        $sales = Sale::whereMonth('created_at', $month->month)
+            ->whereYear('created_at', $month->year)
+            ->with('product')
+            ->get();
+
+        $csv = "Product,Quantity,Price,Total,Date\n";
+        foreach ($sales as $sale) {
+            $csv .= $sale->product->name . "," . $sale->quantity . "," . $sale->price . "," . ($sale->quantity * $sale->price) . "," . $sale->created_at . "\n";
+        }
+
+        $filename = "sales-{$month->format('Y-m')}.csv";
+
+        return Response::streamDownload(function () use ($csv) {
+            echo $csv;
+        }, $filename, [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
 }
